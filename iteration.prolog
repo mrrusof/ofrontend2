@@ -1,51 +1,42 @@
 :- op(1100, xfy, do).
 
 /*
-X1=N1, ..., Xn=Hn
-*/
-set_xs([X|Xs], [[H|_]|Ls]) :- X=H, set_xs(Xs, Ls).
-set_xs([], []).
-
-/*
-consume_heads(+Ls, -LsWithoutHeads)
-*/
-consume_heads([[_|L]|Ls], [L|LswoH]) :- consume_heads(Ls, LswoH).
-consume_heads([], []).
-
-/*
-empty_lists(+ListOfLists).
-*/
-empty_lists([[]|Ls]) :- empty_lists(Ls).
-empty_lists([]).
-
-/*
-foreach_iterator(+[foreach(X1, L1), ..., foreach(Xn, Ln)], -foreach([X1...Xn], [L1...Ln]))
-*/
-foreach_iterator([foreach(X,L)|FEs], fe([X|Xs], [L|Ls])) :-
-        foreach_iterator(FEs, fe(Xs, Ls)).
-foreach_iterator([], fe([], [])).
-
-/*
-( foreach([X1...Xn], [[H1|T1]...[Hn|Tn]]) do Body ) :-
-*/
-( fe(_, Ls) do _ )     :-
-        empty_lists(Ls),
-        !.
-( fe(Xs, Ls) do Body ) :-
-        \+ \+ (set_xs(Xs, Ls), Body),
-        consume_heads(Ls, LswoH),
-        ( fe(Xs, LswoH) do Body ).
-/*
-( +Iterators do +Body )
+( +Iterators do ?Body )
 */
 ( Iterators do Body ) :-
-        (   Iterators = foreach(Xs, Ls) ->
-            ( fe([Xs], [Ls]) do Body )
+        (   Iterators = foreach(Xs, Vs) ->
+            do(([Xs], [Vs]), ([], [], [], []), Body)
         ;   Iterators =.. [,|Its] ->
-            foreach_iterator(Its, ForEach),
-            ( ForEach do Body )
+            iterators_to_drivers_accus(Its, Ds, As),
+            do(Ds, As, Body)
         ).
 
-        
+iterators_to_drivers_accus([foreach(X, Vs)|Its], ([X|Xs], [Vs|Vss]), As) :-
+        iterators_to_drivers_accus(Its, (Xs, Vss), As).
+iterators_to_drivers_accus([fromto(I,In,Out,O)|Its], Ds, ([I|Is],[In|Ins],[Out|Outs],[O|Os])) :-
+        iterators_to_drivers_accus(Its, Ds, (Is, Ins, Outs, Os)).
+iterators_to_drivers_accus([], ([], []), ([], [], [], [])).
 
-        
+do((Xs, Vss), (Is, Ins, Outs, Os), Body) :-
+        do1(Xs, Vss, Is, Ins, Outs, Body, Os).
+do1(Xs, Vss, Ss, Ins, Outs, Body, Os) :-
+        (   maplist(empty, Vss) ->
+            Os = Ss
+        ;   copy_term(Xs-Ins-Outs-Body, XsC-InsC-OutsC-BodyC),
+            set_values(XsC, Vss),
+            set_states(InsC, Ss),
+            BodyC,
+            consume_values(Vss, Vss1),
+            do1(Xs, Vss1, OutsC, Ins, Outs, Body, Os)
+        ).
+
+empty([]).
+
+set_values([Xn|Xs], [[Hn|_]|Vss]) :- Xn=Hn, set_values(Xs, Vss).
+set_values([], []).
+
+set_states([Xn|Xs], [Sn|Ss]) :- Xn=Sn, set_states(Xs, Ss).
+set_states([], []).
+
+consume_values([[_|Vs]|Vss], [Vs|Vss1]) :- consume_values(Vss, Vss1).
+consume_values([], []).
